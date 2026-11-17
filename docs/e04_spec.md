@@ -3,6 +3,7 @@
 Status: **proposed, gated on the pilot.** Do not build this until E01 and E02 have produced a
 figure worth following (a crossover, a surprising failure mode, or a clear adaptation-retention
 tradeoff). If the pilot says stop, this spec is shelved with it.
+E04 sketch is superseded by E05.
 
 ## Why this experiment
 
