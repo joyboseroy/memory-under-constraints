@@ -14,7 +14,7 @@ refreshed or bypassed, and a tool that re-ranks results under different prices f
 Everything is seeded, every hypothesis was written down before the runs, and the repository
 has a place for results that came out boring (`docs/negative_results.md`).
 
-**Status** The harness, the count and SDM models, the economics study and
+**Status, stated plainly.** The harness, the count and SDM models, the economics study and
 the test suite are finished and tested. The full headline run (E01 to E03 with the LSTM and
 Transformer) has **not** been run end to end yet. See [Status](#status) for exactly what has and has not been run.
 
@@ -55,7 +55,7 @@ Three things go wrong in practice:
   and hard locations for an SDM gives numbers that are not comparable. A model can look
   efficient only because its budget was counted generously.
 * **Tuning effort is uneven.** The proposed model is tuned carefully and the baselines get
-  defaults. Many reported wins shrink or vanish under equal tuning.
+  defaults. Gains reported against lightly tuned baselines can shrink or disappear when the baselines get the same tuning effort, which is why this repository fixes the effort.
 * **The score is noisy.** Accuracy on sampled data mixes the model's error with the
   randomness of the data. With a random source you cannot tell a model that is close to the
   best possible predictor from one that is far from it.
@@ -72,6 +72,12 @@ This repository removes each of those three problems for one family of tasks.
   sources disjoint from the evaluation sources.
 * The source **drifts**: a phase pattern `(0, 1, 0)` changes a fraction of its rules and then
   restores them. That measures learning, adaptation and what remains of the old regime.
+
+The practical stake is any setting where memory and compute are scarce and the data keeps
+changing: on-device and streaming models, continual learning, and caches that sit in front of
+expensive computation. In those settings the useful question is rarely "what is the best
+model" and usually "what is the best model for this budget, and how fast does it recover when
+the world shifts?"
 
 The question is deliberately narrow. Whether a given memory mechanism is better in general is
 not something one benchmark can settle. Whether it is better *here*, at this budget, with this
@@ -224,7 +230,7 @@ Full definitions, and the reasoning behind each threshold, are in `docs/hypothes
 ## Quickstart
 
 ```bash
-git clone <this repository>
+git clone https://github.com/joyboseroy/memory-under-constraints
 cd memory-under-constraints
 
 # Core install: enough for count, sdm, the economics study, rescoring and most tests
@@ -441,31 +447,59 @@ results/              output of runs (quick runs are git-ignored)
 ## Related work
 
 This repository does not introduce new algorithms, and none of its ingredients are new.
-What is offered is the protocol that puts them side by side.
+What is offered is the protocol that puts them side by side. Links go to the paper or its
+DOI. Year and venue are as given on those pages.
 
-* Variable-order Markov sources and context trees are an established testbed: Willems,
-  Shtarkov and Tjalkens (context tree weighting, 1995). Transformers and LSTMs on such
-  sources are studied in *Learning Universal Predictors* (Grau-Moya et al., ICML 2024,
-  arXiv:2401.14953) and in Zhou, Tian and Diggavi's work on in-context learning of
-  variable-order Markov chains (AISTATS 2026).
-* Sparse distributed memory: Kanerva (1988). Recent continual-learning and online variants
-  include SQHN (a sparse quantized Hopfield network for online-continual memory) and Dynamic SDM (Pourcel, Vu and French, ECCV 2022). A
-  rank-order SDM appears in arXiv:2607.02967.
-* Count back-off smoothing follows Witten and Bell (1991).
-* The economics study sits near work on trading memory against computation, including
-  Lieder and Griffiths (resource-rational analysis, 2020), Keramati et al. on arbitration
-  between habitual and planning systems, and the practice of semantic caching for language
-  model serving.
+**Variable-order sources as a testbed**
 
-A few quick searches found no existing harness that puts count, LSTM, Transformer, HTM and
-SDM models behind one adapter contract on a drifting exact-oracle stream with matched
-parameter budgets and pre-registered stop rules. That is a search, not a systematic survey;
-if you know of one, please open an issue.
+* Willems, Shtarkov and Tjalkens. The context-tree weighting method: basic properties.
+  *IEEE Transactions on Information Theory*, 1995.
+* Grau-Moya, Genewein, Hutter, Orseau, Deletang, Catt, Ruoss, Wenliang, Mattern, Aitchison
+  and Veness. Learning Universal Predictors. *ICML 2024*.
+  [arXiv:2401.14953](https://arxiv.org/abs/2401.14953). Trains LSTMs and Transformers on
+  variable-order Markov sources and compares them with CTW.
+* Zhou, Tian and Diggavi. An Information-Theoretic Approach to Understanding Transformers'
+  In-Context Learning of Variable-Order Markov Chains. *AISTATS 2026*.
+  [PMLR v300](https://proceedings.mlr.press/v300/zhou26b.html).
+
+**Associative and sparse memories**
+
+* Kanerva. *Sparse Distributed Memory*. MIT Press, 1988.
+* Alonso and Krichmar. A sparse quantized Hopfield network for online-continual memory.
+  *Nature Communications* 15, 3722, 2024.
+  [doi:10.1038/s41467-024-46976-4](https://doi.org/10.1038/s41467-024-46976-4).
+  Code: [nalonso2/SQHN](https://github.com/nalonso2/SQHN).
+* Pourcel, Vu and French. Online Task-free Continual Learning with Dynamic Sparse
+  Distributed Memory. *ECCV 2022*.
+  Code: [Julien-pour/Dynamic-Sparse-Distributed-Memory](https://github.com/Julien-pour/Dynamic-Sparse-Distributed-Memory).
+* Rank-order sparse distributed memory: [arXiv:2607.02967](https://arxiv.org/abs/2607.02967).
+
+**Smoothing used by the count baseline**
+
+* Witten and Bell. The zero-frequency problem: estimating the probabilities of novel events
+  in adaptive text compression. *IEEE Transactions on Information Theory*, 1991.
+
+**Trading memory against computation (for the economics study)**
+
+* Keramati, Dezfouli and Piray. Speed/accuracy trade-off between the habitual and the
+  goal-directed processes. *PLoS Computational Biology* 7(5): e1002055, 2011.
+  [doi:10.1371/journal.pcbi.1002055](https://doi.org/10.1371/journal.pcbi.1002055).
+  Arbitration between a cached habit and slower computation, which is the same trade-off as
+  retrieve versus recompute.
+* Lieder and Griffiths. Resource-rational analysis: understanding human cognition as the
+  optimal use of limited computational resources. *Behavioral and Brain Sciences* 43, e1, 2020.
+  [doi:10.1017/S0140525X1900061X](https://doi.org/10.1017/S0140525X1900061X).
+* Semantic caching for language-model serving is the closest engineering practice to the
+  verify and refresh policies. It is mentioned for context and is not cited to a single source.
+
+**What was searched for and not found.** A few quick searches turned up no existing harness
+that puts count, LSTM, Transformer, HTM and SDM models behind one adapter contract on a
+drifting exact-oracle stream with matched parameter budgets and pre-registered stop rules.
+That is a search, not a systematic survey. If you know of one, please open an issue.
 
 ## Authorship, citation, license
 
-Written by Joy Bose. The code was developed with assistance
-from Claude. Treat it like any research code: run the tests, read
+Written by Joy Bose. The code was developed with assistance from Claude. Treat it like any research code: run the tests, read
 the model implementations before relying on them, and check the budget accounting against
 your own judgment.
 
