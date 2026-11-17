@@ -165,6 +165,7 @@ difficulty.
 | **E02** | drift severity | adaptation speed and retention under different amounts of change |
 | **E03** | distractor and noise levels | how each mechanism degrades under interference |
 | **E04** (spec only) | agent chooses a guess k steps ahead | lookahead through a learned model versus direct association; gated on E01 and E02, see `docs/e04_spec.md` |
+| **E05** (spec only) | Dyna agent with a swappable memory as its world model, gated on E01 and E02 ||
 
 E02 and E03 tune once on the base task and evaluate every condition without retuning, so a
 model that only works at its tuned operating point shows it.
