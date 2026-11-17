@@ -1,0 +1,41 @@
+# E05: Dyna agent in a steerable context-tree MDP, memory as the world model.
+# Reduced first pass (see docs/e05_results_v0_1.md for what was and was not run).
+name: E05_dyna
+env:
+  n_main: 4
+  max_order: 3          # 64 states
+  n_rules: 10
+  concentration: 0.25
+  noise: 0.05
+  reward_density: 0.1
+  gamma: 0.9
+  phases: [0, 1, 0]
+  phase_len: 2000
+agent:                  # shared by every arm, not tuned per arm
+  alpha: 0.3
+  epsilon: 0.1
+  tau: 500
+  sa_decay: 0.999
+eval:
+  n_seeds: 5
+  seed_base: 5000
+  window: 200
+  theta: 0.5            # adaptation time: first step where the rolling normalised score reaches theta
+grid:
+  main:                 # tier small
+    c: [0.3, 0.6, 0.9]
+    drift_kind: [dynamics, reward, both]
+    drift_frac: [0.5]
+    n_plan: [5, 20, 50]
+  severity:             # extra drift severity at c = 0.6 (3 seeds, to bound compute)
+    n_seeds: 3
+    c: [0.6]
+    drift_kind: [dynamics, reward, both]
+    drift_frac: [1.0]
+    n_plan: [5, 20, 50]
+  tier:                 # tier medium, count / sdm / replay only
+    c: [0.6]
+    drift_kind: [dynamics, reward]
+    drift_frac: [0.5]
+    n_plan: [20]
+    arms: [replay, dyna_count, dyna_sdm]

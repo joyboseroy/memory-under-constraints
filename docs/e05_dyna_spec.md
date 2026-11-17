@@ -1,6 +1,6 @@
 # E05 spec: Dyna agent with a swappable memory as its world model
 
-Status: **proposed, gated on the pilot.** This supersedes the E04b sketch in `e04_spec.md`.
+Status: **first pass built and run on a reduced grid, count and SDM memories only** (see `docs/e05_results_v0_1.md`). The pilot gate (E01 and E02 with the neural models) has not been cleared, so this is an early look, not the experiment as specified. Built: the exact environment, the action-conditioned count and SDM memories, all arms below, tests. Not built: LSTM and Transformer `predict_at`, the full grid, per-arm tuning. Original status: proposed, gated on the pilot. Revised: action enters as a query input rather than an interleaved token; the replay arms are specified so reward drift cannot trivially favour the model. This supersedes the E04b sketch in `e04_spec.md`.
 Build it only if E01 and E02 leave at least two memory models worth comparing; the pilot
 decides which memories are worth putting inside an agent.
 
@@ -47,6 +47,16 @@ plan:       repeat n_plan times:
               Q(s, a) <- sum_x' p[x'] * (R_hat[s, x'] + gamma * max_a' Q(s', a'))
 ```
 
+**Replay is specified so that it does not lose by construction.** The buffer holds
+(s, a, x') transitions, not rewards. Every replayed backup reads the reward from the current
+`R_hat[s, x']`, which is updated from real steps exactly as in the Dyna arms. If replay reused
+the rewards stored at collection time it would be unable to react to reward drift and E5-H1
+would be trivially true. Buffer capacity is matched to the model's budget tier by counting
+bits per stored transition. Replay samples uniformly from the buffer; Dyna samples visited
+(s, a) pairs with the same recency weighting. State both and use identical sampling in
+`replay_sa` and `dyna_*`. The difference that remains is the intended one: replay updates
+only transitions it has seen, while a model also backs up the transitions it predicts.
+
 Expected backups use the model's full distribution, so there is no sampling noise from the
 model and the arms differ only in what the model predicts. The tabular Q-learner, exploration
 schedule, reward model and planning schedule are the same in all arms. The tabular Q table is
@@ -54,18 +64,35 @@ a fixed cost shared by all arms and is reported separately from the model's budg
 
 ### Swappable dynamics memory
 
-Action-conditioning is done by interleaving: the model sees the history a1 x1 a2 x2 ... and
-is asked for the token that follows an action. Actions use token ids n_main..2*n_main-1, the
-returned distribution is restricted to the observation tokens and renormalised. Windows and
-orders are counted in raw tokens, so they double relative to the pilot; tier tables must
-state that.
+The memory models the observation stream x1 x2 x3 ..., and the action enters as a conditioning
+input at the query point only. It is not interleaved into the history. Interleaving would
+split count statistics across action contexts at every position, halve the effective window
+for every model, and penalise high-order count models unfairly. Instead the query is
+`predict_at(x_context, a)`: the distribution of the next observation token given the last
+observation tokens `x_context` and the action `a` about to be taken. Each model uses `a`
+as follows:
+
+* **count:** keys are (observation suffix, a), with the same variable-order backoff and decay
+  as the pilot. Backoff drops observation tokens first and keeps `a` until last, then
+  backs off to an a-marginal.
+* **LSTM and Transformer:** the window of observation tokens plus one extra input for `a`
+  (a learned embedding added at the final position). Training pairs are
+  (window, a) -> next token. State the extra parameters in the tier table.
+* **SDM:** the address is the observation-context code concatenated or bound with a fixed
+  random code for `a`. Report the address width and its effect on param_bits.
+
+Because the source ignores the action except through the control mixture, a memory that
+cannot condition on `a` at all (a plain `predict_at(x_context)`) is an informative degenerate
+arm: it learns the marginal dynamics and should plan badly when c is large. Include it as
+`dyna_count_noaction` to show that the action input is doing work.
 
 Arms:
 
 | arm | what is swapped |
 |---|---|
 | `q_learning` | no model, n_plan = 0 |
-| `replay` | no model; replay stored real transitions n_plan times (the control that separates "modeling" from "more updates") |
+| `replay` | no model; Q-learning updates replayed on stored real transitions, n_plan per real step (the control that separates "modeling" from "more updates") |
+| `replay_sa` | as `replay`, but each backup is an expected backup over all observation tokens ever seen after (s, a), weighted by their empirical counts (an uncompressed table, not a memory model; the strong non-generalising baseline) |
 | `dyna_count` | decayed variable-order count model (the baseline to beat) |
 | `dyna_lstm`, `dyna_transformer` | pilot neural models, online |
 | `dyna_sdm` | your SDM model through the adapter |
@@ -77,11 +104,13 @@ silently.
 
 ## Required interface extension
 
-Add one method to the model protocol: `predict_at(context: list[int]) -> np.ndarray`,
-read-only, no state change, no learning. Count: look up the given suffix. Windowed neural:
-forward pass on the given window under no_grad. SDM: read at the address derived from the
-given context. Extend `check_adapter` with a test that `predict_at` leaves the model's
-predictions unchanged. This is the main implementation cost and the main risk; models that
+Add one method to the model protocol:
+`predict_at(x_context: list[int], a: int) -> np.ndarray`, read-only, no state change, no
+learning, returning a distribution over the n_main observation tokens. Count: look up the
+given (suffix, a). Windowed neural: forward pass on the given window and action under
+no_grad. SDM: read at the address derived from the context and the action. Extend `check_adapter` with three tests: `predict_at` leaves the model's own predictions
+unchanged, `predict_at` called twice returns the same array, and the output is a normalised
+distribution over the n_main observation tokens. This is the main implementation cost and the main risk; models that
 cannot support it are reported as unsupported.
 
 ## Grid
@@ -109,7 +138,11 @@ cannot support it are reported as unsupported.
 
 * **E5-H1.** Under reward drift with unchanged dynamics, any Dyna arm with a reasonable model
   beats `q_learning` and `replay` at equal real samples, because the model can re-propagate
-  the new reward without new experience.
+  the new reward through transitions the agent has not recently visited. Compare against
+  `replay` with current rewards (as specified above) and against `replay_sa`. The claim is
+  weaker and more interesting than "models beat replay": the gain should shrink toward zero
+  as visitation coverage of (s, a) grows, and it should be largest when the state space is
+  poorly covered.
 * **E5-H2.** Under dynamics drift, the advantage depends on how fast the memory adapts. Models
   that adapt quickly (decayed counts, SDM) lose less than slowly adapting gradient models at
   small budgets.
@@ -117,6 +150,8 @@ cannot support it are reported as unsupported.
   models (high ECE) plan worse than their KL predicts.
 * **E5-H4.** The Dyna advantage over `replay` appears only at large n_plan; at small n_plan
   replay matches it. Report gain per FLOP.
+* **E5-H4b.** `dyna_count_noaction` loses to `dyna_count` increasingly as c rises, confirming
+  that the action input is the part of the model doing planning work.
 * **E5-H5 (null).** `dyna_count` ties every other memory in every cell, in which case the
   choice of memory does not matter for planning in this environment.
 
@@ -127,14 +162,40 @@ whole grid, if `dyna_count` ties the other memories everywhere, if results flip 
 hyperparameter changes, or if planning compute cannot be accounted for defensibly. A tie of
 `dyna_count` with everything is a legitimate and publishable null.
 
+## Changes made when it was built (v0.1)
+
+Recorded here and in `docs/hypotheses.md` so the spec and the code do not drift apart.
+
+* **Arm added: `dyna_oracle_full`.** The spec's planning samples only visited (s, a) pairs. A single-seed diagnostic
+  before any sweep showed that about half the Q table is never visited in 1500 steps, so a perfect dynamics model
+  restricted to visited pairs is not an upper bound. `dyna_oracle_full` plans over all pairs uniformly and separates
+  model-accuracy headroom from coverage headroom. `dyna_oracle` is kept as specified.
+* **Score is normalised.** Return is reported as (reward rate - random policy rate) / (optimal rate - random policy
+  rate), computed exactly per regime, because with about 10% rewarding pairs a random policy already earns about a quarter
+  of the optimal raw rate. Fraction of optimal is also in the CSV (`frac_opt`). Adaptation time uses a rolling
+  normalised score of 0.5 (window 200), not 50% of raw optimal return.
+* **No per-arm tuning.** Every arm uses the same fixed Q-learning settings (alpha 0.3, epsilon 0.1) and each memory its
+  default hyperparameters. The spec's "identical tuning budget" was not met because there was no tuning at all. This
+  favours no arm deliberately but may favour whichever default happens to suit the task.
+* **Reduced grid.** 64 states (4 tokens, order 3), c in {0.3, 0.6, 0.9}, drift_frac 0.5 for all three drift kinds plus
+  drift_frac 1.0 at c = 0.6 (3 seeds), n_plan in {5, 20, 50} (and 0 for `q_learning`), tier small, plus a small
+  versus medium check at c = 0.6 (count, SDM, replay), 5 seeds (3 for severity). The spec's grid has 4096 states.
+* **Reward drift** relocates a drift_frac of the rewarding entries to random non-rewarding entries, so density stays
+  fixed and drift_frac 1.0 moves every reward.
+* **Context size.** `x_context` is always the full last-m window (the state). Models back off inside it.
+* **Models not built.** LSTM, Transformer and HTM `predict_at`. The LSTM and Transformer are the main remaining cost.
+
 ## Build plan (about one to two weeks if the pilot clears)
 
-1. `muc/envs/steerable.py` with exact transitions, value iteration and tests: c = 0 reduces to
+1. (done) `muc/envs/steerable.py` with exact transitions, value iteration and tests: c = 0 reduces to
    the pilot's source; value iteration agrees with Monte Carlo rollouts of the optimal policy.
-2. `predict_at` on count, LSTM, Transformer and your SDM adapter, with the contract test.
-3. The interleaving wrapper and tests (restriction to observation tokens, normalisation).
-4. `muc/agents/dyna.py`, `q_learning`, `replay`, `dyna_oracle`; agent contract test and a
+2. (count and SDM done; LSTM and Transformer not) `predict_at(x_context, a)` on count, LSTM, Transformer and your SDM adapter, with the
+   contract tests.
+3. (done for the environment and the count model; the all-memories check is not) Tests that action conditioning is real: with c = 0 the action has no effect and all
+   memories should agree with their `predict_at` without `a`; with c = 1 the next token equals
+   `a` and the oracle memory must return a point mass.
+4. (done) `muc/agents/dyna.py`, `q_learning`, `replay`, `dyna_oracle`; agent contract test and a
    reproducibility test.
-5. Decision-stream harness and `experiments/configs/e05_dyna.yaml`; figures for return vs
+5. (done, `experiments/run_e05.py`, `analysis/e05_summary.py`) Decision-stream harness and `experiments/configs/e05_dyna.yaml`; figures for return vs
    n_plan, return vs KL, adaptation time by drift kind, compute vs return.
-6. Record config, seeds and deviations in `docs/hypotheses.md` before the first sweep.
+6. (done) Record config, seeds and deviations in `docs/hypotheses.md` before the first sweep.

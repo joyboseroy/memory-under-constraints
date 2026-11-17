@@ -68,3 +68,11 @@ All metrics derive from the true conditional distribution P_t of each event.
   hypotheses, renamed R-H1 to R-H4 and predictions R-P1 to R-P5 so they cannot be confused
   with these. `muc/rescore.py` only re-reads finished results under different prices for
   compute; it does not change any metric, tuning rule or budget tier.
+* 2026-11-17, before the first E05 sweep: built a reduced first pass of E05 (`docs/e05_dyna_spec.md`) with count and SDM
+  memories only. E5-H1 to E5-H5 are as written in the spec, plus E5-H4b added in the spec revision of the same day.
+  Deviations, all fixed before the sweep: score is normalised against the random and optimal policies; adaptation time
+  uses a normalised score of 0.5; no per-arm tuning (shared fixed settings); reduced grid (64 states, c in 0.3/0.6/0.9,
+  drift_frac 0.5, plus 1.0 at c = 0.6 with 3 seeds, n_plan 5/20/50, tier small, medium only for a three-arm check);
+  an extra arm `dyna_oracle_full` was added after a single-seed diagnostic showed visited-only planning leaves about half
+  the Q table untouched. The diagnostic was one seed and not part of any reported result. Statistics are paired
+  differences within the same MDP, 1.96 SE, treated as rough. None of the E01 to E03 hypotheses or settings changed.

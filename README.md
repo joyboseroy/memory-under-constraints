@@ -16,7 +16,8 @@ has a place for results that came out boring (`docs/negative_results.md`).
 
 **Status, stated plainly.** The harness, the count and SDM models, the economics study and
 the test suite are finished and tested. The full headline run (E01 to E03 with the LSTM and
-Transformer) has **not** been run end to end yet. See [Status](#status) for exactly what has and has not been run.
+Transformer) has **not** been run end to end yet, so this repository does not claim a
+headline result. See [Status](#status) for exactly what has and has not been run.
 
 ---
 
@@ -115,7 +116,8 @@ Concretely, the repository provides:
 | `muc/rescore.py` | Re-ranks finished results under any price of compute, with the Pareto frontier. |
 | `muc/economics/` | A pure-Python cost-ledger study of retrieve, verify, recompute and refresh policies under drift. |
 | `docs/` | Pre-registered hypotheses, budget protocol, a deviations log and a negative-results file. |
-| `tests/` | About 80 tests. Count, SDM, metrics, economics and rescoring run without PyTorch. |
+| `muc/envs`, `muc/agents` | E05: the steerable MDP with exact solutions and Dyna-style agents (pure NumPy). First pass run, see below. |
+| `tests/` | About 105 tests. Count, SDM, metrics, economics and rescoring run without PyTorch. |
 
 ## Status
 
@@ -128,6 +130,7 @@ Concretely, the repository provides:
 | `htm`, `sdm_snn` | **stubs** that raise `NotImplementedError`; the runner skips them. Their docstrings describe the intended design and budget accounting. |
 | `muc/economics` (remember versus recompute) | done, 36 tests, results in `docs/economics/results_v0_1.md` |
 | `muc/rescore.py` | done, tested |
+| E05 (Dyna agent, memory as world model) | **first pass run on a reduced grid**: exact environment, count and SDM memories, eight arms, 27 tests, results in `docs/e05_results_v0_1.md`. LSTM and Transformer world models, per-arm tuning and the full grid are **not done**; the pilot gate is not cleared. |
 | Full E01, E02, E03 with all implemented models | **not run.** Estimated at one to two hours on one CPU core; the estimate has not been checked end to end. |
 
 One partial observation exists, and it is not a result because the comparison set is
@@ -165,7 +168,7 @@ difficulty.
 | **E02** | drift severity | adaptation speed and retention under different amounts of change |
 | **E03** | distractor and noise levels | how each mechanism degrades under interference |
 | **E04** (spec only) | agent chooses a guess k steps ahead | lookahead through a learned model versus direct association; gated on E01 and E02, see `docs/e04_spec.md` |
-| **E05** (spec only) | Dyna agent with a swappable memory as its world model, gated on E01 and E02 ||
+| **E05** (first pass run, reduced) | Dyna agent in a steerable context-tree MDP | does the choice of memory as a world model change planning under drift; spec in `docs/e05_dyna_spec.md`, results in `docs/e05_results_v0_1.md`. Count and SDM only. |
 
 E02 and E03 tune once on the base task and evaluate every condition without retuning, so a
 model that only works at its tuned operating point shows it.
@@ -244,6 +247,11 @@ python analysis/make_figures.py /tmp/smoke
 
 # The economics study (pure Python, a few seconds)
 python -m muc.economics all
+
+# E05 (Dyna agent with a swappable memory as its world model). No PyTorch needed.
+python experiments/run_e05.py --grid smoke --out /tmp/e05_smoke        # about 10 s, a check that it runs
+python experiments/run_e05.py --grid main --out results/e05 --workers 2 # about an hour on 2 cores
+python analysis/e05_summary.py results/e05                               # tables and figures
 ```
 
 To run the neural models as well:
@@ -408,16 +416,20 @@ muc/
   harness.py          the evaluation loop (stream, frozen probes, budgets)
   hpsearch.py         equal-budget random search with common random numbers
   rescore.py          re-rank results under any price of compute
-  models/             base contract + count, sdm, neural, htm (stub), sdm_snn (stub)
+  models/             base contract + count, sdm, neural, htm (stub), sdm_snn (stub), action (E05 memories)
+  envs/               E05 steerable context-tree MDP with exact value iteration
+  agents/             E05 Dyna-style agents and the arms compared
   economics/          remember-versus-recompute study (pure Python)
 experiments/
   run.py              run an experiment config
   budget_table.py     print measured budgets for every model and tier
   rescore.py          command-line wrapper for muc/rescore.py
-  configs/            e01_memory_budget, e02_drift, e03_interference
-analysis/make_figures.py
-docs/                 hypotheses, budget protocol, negative results, e04 spec, economics/
-tests/                about 80 tests; neural ones skip when PyTorch is missing
+  run_e05.py          E05 sweep runner (no PyTorch)
+  configs/            e01_memory_budget, e02_drift, e03_interference, e05_dyna
+analysis/make_figures.py   figures for E01 to E03
+analysis/e05_summary.py    tables and figures for E05
+docs/                 hypotheses, budget protocol, negative results, e04 and e05 specs, e05 results, economics/
+tests/                about 105 tests; neural ones skip when PyTorch is missing
 results/              output of runs (quick runs are git-ignored)
 ```
 
