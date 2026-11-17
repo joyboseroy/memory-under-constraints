@@ -1,0 +1,7 @@
+numpy>=1.26
+pandas>=2.0
+pyyaml>=6.0
+matplotlib>=3.8
+pytest>=8.0
+# Needed only for the LSTM and Transformer models (count, sdm and economics run without it):
+torch>=2.2

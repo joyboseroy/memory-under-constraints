@@ -1,0 +1,192 @@
+# E03: interference. Distractor tokens (never part of the context rule) and noise.
+# Tuned once on the clean base task, evaluated across conditions without retuning.
+name: E03_interference
+task:
+  n_main: 8
+  n_distract: 4
+  max_order: 4
+  n_rules: 24
+  concentration: 0.25
+  noise: 0.05
+  distract_prob: 0.0
+  phases:
+  - 0
+  - 1
+  - 0
+  phase_len: 2000
+  drift_frac: 0.5
+grid:
+  distract_prob:
+  - 0.0
+  - 0.2
+  - 0.4
+  noise:
+  - 0.05
+  - 0.2
+eval:
+  n_seeds: 5
+  seed_base: 1000
+  window: 200
+  p_star: 0.5
+  rel_star: 0.9
+  probe_seqs: 4
+  probe_len: 300
+tune:
+  n_trials: 20
+  n_seeds: 2
+  seed_base: 2000
+  phase_len: 1000
+  true: default
+models:
+  count:
+    kind: count
+    space:
+      decay:
+        type: loguniform
+        low: 0.98
+        high: 0.99999
+      wb_scale:
+        type: loguniform
+        low: 0.1
+        high: 5.0
+    tiers:
+      tiny:
+        max_entries: 16
+        max_order: 2
+      small:
+        max_entries: 64
+        max_order: 3
+      medium:
+        max_entries: 256
+        max_order: 4
+      large:
+        max_entries: 1024
+        max_order: 4
+  lstm_online:
+    kind: lstm
+    mode: online
+    fixed:
+      n_layers: 1
+    space: &id001
+      optimizer:
+        type: choice
+        values:
+        - sgd
+        - adam
+      lr:
+        type: loguniform
+        low: 0.0003
+        high: 0.1
+      momentum:
+        type: choice
+        values:
+        - 0.0
+        - 0.9
+      loss_positions:
+        type: choice
+        values:
+        - last
+        - all
+    tiers:
+      tiny:
+        emb: 4
+        hidden: 4
+        window: 8
+      small:
+        emb: 8
+        hidden: 8
+        window: 8
+      medium:
+        emb: 16
+        hidden: 16
+        window: 16
+      large:
+        emb: 32
+        hidden: 32
+        window: 16
+  transformer_online:
+    kind: transformer
+    mode: online
+    fixed:
+      n_heads: 2
+      n_layers: 1
+      ff_mult: 2
+    space: *id001
+    tiers:
+      tiny:
+        d_model: 4
+        window: 8
+      small:
+        d_model: 8
+        window: 8
+      medium:
+        d_model: 16
+        window: 16
+      large:
+        d_model: 32
+        window: 16
+  transformer_incontext:
+    kind: transformer
+    mode: incontext
+    fixed:
+      n_heads: 2
+      n_layers: 1
+      ff_mult: 2
+      pre_steps: 600
+      pre_streams: 64
+      pre_events: 600
+      pre_batch: 32
+    space:
+      pre_lr:
+        type: loguniform
+        low: 0.001
+        high: 0.01
+    tiers:
+      tiny:
+        d_model: 4
+        window: 8
+      small:
+        d_model: 8
+        window: 8
+      medium:
+        d_model: 16
+        window: 16
+      large:
+        d_model: 32
+        window: 16
+  # Generic Sparse Distributed Memory baseline (muc/models/sdm.py). Not the rank-order or
+  # spiking model: that belongs in the sdm_snn slot below. n_locations is the tier; the
+  # address length depends on the tuned k_ctx, so measured param_bits can differ from the
+  # budget_table default (k_ctx 3) by about 4 percent. Figures use the measured value.
+  sdm:
+    kind: sdm
+    fixed: {code_bits: 8}
+    space:
+      k_ctx: {type: choice, values: [2, 3, 4]}
+      active_frac: {type: loguniform, low: 0.02, high: 0.5}
+      decay: {type: loguniform, low: 0.98, high: 0.99999}
+      prior: {type: loguniform, low: 0.05, high: 5.0}
+    tiers:
+      tiny:   {n_locations: 16}
+      small:  {n_locations: 64}
+      medium: {n_locations: 256}
+      large:  {n_locations: 1024}
+
+  htm:
+    kind: htm
+    space: {}
+    tiers:
+      tiny: {}
+      small: {}
+      medium: {}
+      large: {}
+  sdm_snn:
+    kind: sdm_snn
+    space: {}
+    tiers:
+      tiny: {}
+      small: {}
+      medium: {}
+      large: {}
+tiers_only:
+- medium
