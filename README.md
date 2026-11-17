@@ -14,10 +14,9 @@ refreshed or bypassed, and a tool that re-ranks results under different prices f
 Everything is seeded, every hypothesis was written down before the runs, and the repository
 has a place for results that came out boring (`docs/negative_results.md`).
 
-**Status, stated plainly.** The harness, the count and SDM models, the economics study and
+**Status** The harness, the count and SDM models, the economics study and
 the test suite are finished and tested. The full headline run (E01 to E03 with the LSTM and
-Transformer) has **not** been run end to end yet, so this repository does not claim a
-headline result. See [Status](#status) for exactly what has and has not been run.
+Transformer) has **not** been run end to end yet. See [Status](#status) for exactly what has and has not been run.
 
 ---
 
